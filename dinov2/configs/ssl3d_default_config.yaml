@@ -1,0 +1,214 @@
+MODEL:
+  WEIGHTS: ''
+compute_precision:
+  grad_scaler: true
+  teacher:
+    backbone:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    dino_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    ibot_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+  student:
+    backbone:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp16
+        buffer_dtype: fp32
+    dino_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp32
+        buffer_dtype: fp32
+    ibot_head:
+      sharding_strategy: SHARD_GRAD_OP
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp32
+        buffer_dtype: fp32
+dino:
+  loss_weight: 1.0
+  head_n_prototypes: 65536
+  head_bottleneck_dim: 256
+  head_nlayers: 3
+  head_hidden_dim: 2048
+  koleo_loss_weight: 0.1
+ibot:
+  loss_weight: 1.0
+  mask_sample_probability: 0.5
+  mask_ratio_min_max:
+  - 0.2
+  - 0.75
+  separate_head: true
+  head_n_prototypes: 65536
+  head_bottleneck_dim: 256
+  head_nlayers: 3
+  head_hidden_dim: 2048
+train:
+  batch_size_per_gpu: 64 # 64/GPU × 32 GPUs = bs2048 
+  data_min_axis_size: 32
+  dataset_path: ''  # Provide via local override.
+  output_dir: ./results
+  cache_dir: null  # Will be overridden by --cache-dir argument
+  saveckp_freq: 20
+  seed: 0
+  num_workers: 32
+  OFFICIAL_EPOCH_LENGTH: 1250
+  cache_dataset: true
+  centering: sinkhorn_knopp
+  rank0_cache: true   # Only rank 0 writes cache, others wait and read (prevents corruption)
+  read_only_cache: false  # If true, use precomputed cache (run precompute_cache.py first). Fails on cache miss instead of regenerating.
+  target_inplane_fov_mm: [200.0, 300.0]  # In-plane (H×W) FOV normalization range
+  target_throughplane_fov_mm: [80.0, 400.0]  # Through-plane (D) FOV normalization range
+  anisotropy_threshold: 1.5  # Max anisotropy ratio for cross-plane rotations
+  intensity_percentile_lower: 0.05
+  intensity_percentile_upper: 99.95
+student:
+  arch: vit_large_3d
+  patch_size: 16
+  drop_path_rate: 0.3
+  layerscale: 1.0e-05
+  drop_path_uniform: true
+  pretrained_weights: ''
+  full_pretrained_weights: ''
+  ffn_layer: "mlp"
+  block_chunks: 4
+  qkv_bias: true
+  proj_bias: true
+  ffn_bias: true
+teacher:
+  momentum_teacher: 0.992 
+  final_momentum_teacher: 1
+  warmup_teacher_temp: 0.04 # (to prevent collapse when using small batch size and numerical stability issues)
+  teacher_temp: 0.07
+  warmup_teacher_temp_epochs: 30 # (align with LR warmup for synchronized updates)
+optim:
+  epochs: 100
+  weight_decay: 0.04
+  weight_decay_end: 0.4
+  base_lr: 0.002 # 0.002  # learning rate for a batch size of 1024
+  lr: 0.  # will be set after applying scaling rule
+  warmup_epochs: 10
+  min_lr: 1.0e-06
+  clip_grad: 3.0
+  freeze_last_layer_epochs: 1
+  scaling_rule: sqrt_wrt_1024
+  patch_embed_lr_mult: 0.2
+  layerwise_decay: 0.9
+  adamw_beta1: 0.9
+  adamw_beta2: 0.999
+crops:
+  # Mode Selection: enable spacing-aware preprocessing when appropriate
+  # Rationale: 62,638 validated volumes span 12.5× FOV range (160mm brain → 2000mm whole-body)
+  #            and 5× spacing anisotropy (0.5mm isotropic → 2.5mm CT through-plane).
+  #            Relative scales cause semantic inconsistency (brain "local" ≈ body "global").
+  #            Physical scales ensure anatomical alignment across modalities.
+  use_spacing_aware: false
+  
+  # ========== 3DINO BASELINE PARAMETERS (relative scale) ==========
+  # Used when use_spacing_aware=false (fallback for debugging)
+  global_crops_in_slice_scale: [0.48, 1.0]
+  global_crops_cross_slice_scale: [0.5, 1.0]
+  local_crops_in_slice_scale: [0.16, 0.48]
+  local_crops_cross_slice_scale: [0.2, 0.5]
+  
+  # ========== SPACING-AWARE PARAMETERS (hybrid cropping) ==========
+  # Used when use_spacing_aware=true
+  # 
+  # DESIGN RATIONALE (validated on 62,638 volumes):
+  # 1. In-plane: Relative scales (48-100% global, 16-48% local)
+  #    - Handles resolution diversity (128-512 px) without physical metadata
+  #    - Maintains 2-6× scale diversity across all resolutions
+  # 
+  # 2. Through-plane: Physical FOV (120-280mm global, 40-100mm local)
+  #    - Ensures semantic consistency across 12.5× FOV range
+  #    - Global: "Organ-level" (brain hemisphere, liver, thorax)
+  #    - Local: "Tissue-level" (gyrus, lesion, vertebra)
+  #    - Preserves 2.3-2.8× scale diversity (280/100 = 2.8×)
+  # 
+  # 3. Cross-modality examples:
+  #    MR Brain (160mm):    Global 120-280mm (75-175%) → hemisphere to full head
+  #                         Local 40-100mm (25-63%) → gyrus to lobe
+  #    CT Body (400mm):     Global 120-280mm (30-70%) → organ to organ system  
+  #                         Local 40-100mm (10-25%) → lesion to organ segment
+  #    PET Whole-body (1000mm): Global 120-280mm (12-28%) → region to multi-region
+  #                             Local 40-100mm (4-10%) → vertebra to spine segment
+  # 
+  # 4. Comparison with DINOv2/3DINO:
+  #    - DINOv2: 96px local, 224px global (2.3× ratio on natural images)
+  #    - 3DINO: Relative scales on isotropic ~250mm FOV medical data
+  #    - Spacing-aware variant: Physical scales + anisotropy handling for diverse FOVs
+  # 
+  # 5. Anisotropy handling (spacing_z / spacing_xy > threshold):
+  #    - Auto-swap dimensions to prefer in-plane cropping
+  #    - Gate cross-plane rotations (prevent blurring on thick-slice CT)
+  #    - Adjust through-plane crop to maintain target physical FOV
+  # 
+  # ABLATION NOTES:
+  # - To recover 6,332 "unexpectedly_large_output" failures, increase to:
+  #   global: [120, 400]mm, local: [40, 150]mm (trade-off: less fine-grained detail)
+  # - For isotropic-only subset (MR brain), relative mode sufficient
+  # - For mixed modality (current), spacing-aware strongly recommended
+  global_crops_physical_scale_mm: [120.0, 280.0]   # Through-plane physical FOV (organ-level)
+  local_crops_physical_scale_mm: [40.0, 100.0]     # Through-plane physical FOV (tissue-level)
+  anisotropy_threshold: 2.0  # Gate cross-plane ops when spacing_z/spacing_xy > 2.0
+  
+  # ========== COMMON PARAMETERS ==========
+  local_crops_number: 8
+  global_crops_size: 96
+  local_crops_size: 48
+  # Modality-adaptive FOV bounds (empirical from 75K scan analysis, validated per-dataset)
+  # Strategy: Global modality defaults + anatomical grouping + dataset overrides
+  # Ensures consistent scale diversity for SSL while respecting modality-specific characteristics
+  
+  # Global modality-level FOV bounds (fallback for datasets without overrides)
+  # UPDATED: Relaxed upper bounds to recover ~6,300 volumes (90.82% → ~98% pass rate)
+  modality_fov_bounds:
+    ct:  [200.0, 800.0]   # Increased from 600 to 800 (large torso, whole-body)
+    cta: [300.0, 1200.0]  # Increased from 900 to 1200 (long vascular territories)
+    mr:  [140.0, 250.0]   # Increased from 180 to 250 (large brain volumes)
+    pet: [800.0, 1200.0]  # Increased from 1000 to 1200 (whole-body variations)
+    oct: [1.8, 2.0]     # Optical Coherence Tomography (retinal scans)
+    cbct: [40.0, 100.0]  # Dental CBCT (teeth, jaw)
+  
+  # Anatomical-specific FOV bounds (overrides modality defaults based on anatomy field)
+  # Used when manifest entry has 'anatomy' field matching these categories
+  anatomical_fov_bounds:
+    # MR anatomical grouping
+    brain_mr: [140.0, 180.0]    # Brain/head MRI: jhu_stroke, isles2022, isles2024
+    body_mr: [200.0, 290.0]     # Body/abdominal MRI: dukeliver, fastmri_breast
+    extremity_mr: [96.0, 120.0] # Extremity MRI: fastmri_knee, fastmri_prostate
+    
+    # CT overrides (extreme outliers)
+    autopet1: [800.0, 1000.0]      # Whole-body PET/CT (misclassified as CT)
+    autopet2: [800.0, 1000.0]      # Whole-body PET/CT (misclassified as CT)
+    imagecas: [110.0, 150.0]       # Pediatric cardiac CT (small FOV)
+    
+    # CTA overrides (highly variable vascular protocols)
+    imagetaad: [800.0, 950.0]      # Thoracic aorta dissection (long vessel)
+    imagetbad: [300.0, 450.0]      # Different vascular territory
+    
+    # MR overrides (for ablation studies - can disable anatomical grouping)
+    dukeliver: [220.0, 290.0]      # Liver MRI  
+    fastmri_breast: [200.0, 220.0] # Breast MRI
+    fastmri_knee: [96.0, 120.0]    # Knee MRI
+    fastmri_prostate: [90.0, 110.0] # Prostate MRI
+    
+    # PET overrides
+    hecktor25: [350.0, 950.0]      # Head/neck PET (different protocol from whole-body)
+evaluation:
+  eval_period_iterations: 12500

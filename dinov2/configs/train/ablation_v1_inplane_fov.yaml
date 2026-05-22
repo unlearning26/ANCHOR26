@@ -1,0 +1,35 @@
+# Experimental Configuration: V1 - In-Plane FOV Normalization
+# Expected Impact: +2-4 Dice, +5-10% cross-dataset transfer
+# Based on: nnU-Net (Isensee 2021), Zhou et al. 2023
+
+# Inherit from anisotropic config
+parent: [ssl3d_default_config.yaml]
+
+# Experiment metadata
+experiment:
+  name: "ablation_v1_inplane_fov"
+  variant: "InPlaneFOVNormalization"
+  hypothesis: "Normalizing in-plane FOV reduces 3.5× resolution variance, improving feature consistency"
+  references:
+    - "nnU-Net: Isensee et al., Nature Methods 2021"
+    - "Zhou et al., Medical Image Analysis 2023"
+
+# Override augmentation class
+train:
+  augmentation_class: "DataAugmentationDINO3d_V1_InPlaneFOV"
+  augmentation_params:
+    global_crops_in_slice_scale: [0.4, 1.0]
+    global_crops_cross_slice_scale: [0.5, 1.0]
+    local_crops_in_slice_scale: [0.05, 0.4]
+    local_crops_cross_slice_scale: [0.2, 0.6]
+    local_crops_number: 10
+    global_crops_size: 96
+    local_crops_size: 48
+    # New parameter: in-plane FOV target range
+    target_inplane_fov_mm: [200.0, 300.0]  # Covers brain (200) to abdomen (300)
+
+# Logging
+logging:
+  experiment_tag: "v1_inplane_fov"
+  track_augmentation_stats: true
+  log_spacing_distribution: true

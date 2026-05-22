@@ -1,0 +1,16 @@
+# Highres adaptation config for 62K / ViT-L/16
+# Increases crop size from 96³ to 112³
+# NOTE: These parameters are passed as CLI overrides, this file is for reference only
+train:
+  batch_size_per_gpu: 48  # Reduced from 64 due to larger crops
+  data_min_axis_size: 48
+  OFFICIAL_EPOCH_LENGTH: 125
+student:
+  full_pretrained_weights: ''  # Set via CLI to source checkpoint
+crops:
+  global_crops_size: 112
+  local_crops_size: 64
+optim:
+  base_lr: 0.001  # Lower LR for fine-tuning
+evaluation:
+  eval_period_iterations: 3125

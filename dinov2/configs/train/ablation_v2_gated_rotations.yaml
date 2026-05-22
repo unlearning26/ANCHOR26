@@ -1,0 +1,31 @@
+# Experimental Configuration: V2 - Anisotropy-Gated Rotations
+# Expected Impact: +0.5-1.5 Dice, +2-5% classification accuracy
+# Based on: nnU-Net rotation policy, Taleb et al. 2021
+
+parent: [ssl3d_default_config.yaml]
+
+experiment:
+  name: "ablation_v2_gated_rotations"
+  variant: "AnisotropyGatedRotations"
+  hypothesis: "Disabling cross-plane rotations on anisotropic data prevents geometric distortions"
+  references:
+    - "nnU-Net: Isensee et al., Nature Methods 2021"
+    - "Taleb et al., IEEE TPAMI 2021"
+
+train:
+  augmentation_class: "DataAugmentationDINO3d_V2_GatedRotations"
+  augmentation_params:
+    global_crops_in_slice_scale: [0.4, 1.0]
+    global_crops_cross_slice_scale: [0.5, 1.0]
+    local_crops_in_slice_scale: [0.05, 0.4]
+    local_crops_cross_slice_scale: [0.2, 0.6]
+    local_crops_number: 10
+    global_crops_size: 96
+    local_crops_size: 48
+    # New parameter: anisotropy threshold for cross-plane rotation
+    anisotropy_threshold: 1.5  # Only allow cross-plane if sz/min(sx,sy) < 1.5
+
+logging:
+  experiment_tag: "v2_gated_rotations"
+  track_rotation_gating: true
+  log_anisotropy_distribution: true
