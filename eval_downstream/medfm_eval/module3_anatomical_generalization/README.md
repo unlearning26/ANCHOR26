@@ -94,9 +94,3 @@ bash ./scripts/run_module3_anatomical_generalization.sh
 4. `outputs_module3/<analysis>/module3/<variant>/results/module3_anatomical_generalization_summary.json`
 5. `outputs_module3/<analysis>/module3/<variant>/results/module3_anatomical_generalization_summary.csv`
 6. `outputs_module3/<analysis>/module3/<variant>/results/<checkpoint>/<feature_type>/module3_anatomical_generalization.json`
-
-## Storage note
-
-Upstream feature-bundle discovery still reuses the `outputs_phase2` namespace.
-This is only a storage convention; it does not imply that every Module 3 source
-dataset is valid for Phase 2 paired CT-MR alignment.
