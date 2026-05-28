@@ -177,7 +177,3 @@ What Setting B runs:
 - measures representation drift under matched spacing perturbations
 - writes dataset- and variant-specific caches under `../caches/<dataset>/phase1/<variant>/`
 - skips crop112 checkpoints when the matching crop112 cache tree is absent
-
-# Legacy note
-
-Legacy flat manifest names such as `sampled.json`, `balanced.json`, and old `run_setting_b_*` launcher names are no longer part of the active workflow.
